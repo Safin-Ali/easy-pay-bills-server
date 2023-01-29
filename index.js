@@ -17,22 +17,29 @@ const client = new MongoClient(uri);
 async function main () {
 
     const encryptPass = (req,res,next) => {
-        const userPass = req.headers;
+        const userPass = req.body.userPass;
         const encryptedPass = jwt.sign(userPass,process.env.JWT_TOKEN);
-        console.log('key',encryptedPass)
+        req.encryptPass = encryptedPass;
         next();
     };
 
-    // const decryptPass = (encode) => {
-    //     const encryptedPass = jwt.verify(userPass,process.env.JWT_TOKEN);
-    //     next();
-    // };
+    const encryptedUserInfo = (email,pass) => {
+        const encryptedInfo = jwt.sign({userEmail:email,userPass:pass},process.env.JWT_TOKEN);
+        return encryptedInfo;
+    };
 
-
+    const decryptPass = (encryptStr) => {
+        jwt.verify(encryptStr,process.env.JWT_TOKEN,(err,decode)=>{
+            if(err) return 'errrrrrrror';
+            encryptStr = decode;
+        });
+        return encryptStr;
+    };
 
     try{
         const OPB = client.db(`online-payment-bills`);
         const billList = OPB.collection('BillList');
+        const userInfo = OPB.collection('UsersInfo');
 
         app.get(`/`,(req,res)=>{
             return res.send('Welcome Online-Payment-Bills APIs')
@@ -43,9 +50,25 @@ async function main () {
             return reseult;
         });
 
-        app.get('/login',encryptPass,async (req,res)=>{
-            const {userEmail} = req.headers;
-            const filter = {userEmail}
+        app.post('/login',encryptPass,async (req,res)=>{
+            const {userEmail,userPass} = req.body;
+            const findUser = await userInfo.estimatedDocumentCount({userEmail: userEmail}) > 0;
+            if(findUser) {
+                const getUserInfo = await userInfo.findOne({userEmail: userEmail});
+                const decode = decryptPass(getUserInfo.userPass);
+                if(decode === userPass) {
+                    const encodedUserInfo = encryptedUserInfo(userEmail,userPass);
+                    res.send({acknowledge: true,encodedUserInfo});
+                }
+            }
+        });
+
+        app.post('/registration',encryptPass,async (req,res)=>{
+            const {userEmail,userFullName} = req.body;
+            const userData = {userEmail,userFullName,userPass: req.encryptPass};
+            const result = await userInfo.insertOne(userData);
+            return res.send(result);
+
         });
     }
     catch(e){
