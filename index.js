@@ -10,31 +10,32 @@ const jwt = require('jsonwebtoken');
 app.use(cors());
 app.use(express.json());
 
+const encryptPass = (basePassStr) => {
+    return jwt.sign(basePassStr,process.env.JWT_TOKEN);
+};
+const encryptedUserInfo = (email,pass) => {
+    const encryptedInfo = jwt.sign({userEmail:email,userPass:pass},process.env.JWT_TOKEN);
+    return encryptedInfo;
+};
+const decryptedUserInfo = (encryptedStr) => {
+    return jwt.verify(encryptedStr,process.env.JWT_TOKEN,(err,decode)=>{
+        if(err) return 'errrrrrrror';
+        return decode;
+    });
+};
+const decryptPass = (encryptStr) => {
+    jwt.verify(encryptStr,process.env.JWT_TOKEN,(err,decode)=>{
+        if(err) return 'errrrrrrror';
+        encryptStr = decode;
+    });
+    return encryptStr;
+};
+
 // connect mongoDB
 const uri = `mongodb+srv://${process.env.mongoDBUser}:${process.env.mongoDBPass}@cluster01.rhyj5nw.mongodb.net/test`;
 const client = new MongoClient(uri);
 
 async function main () {
-
-    const encryptPass = (req,res,next) => {
-        const userPass = req.body.userPass;
-        const encryptedPass = jwt.sign(userPass,process.env.JWT_TOKEN);
-        req.encryptPass = encryptedPass;
-        next();
-    };
-
-    const encryptedUserInfo = (email,pass) => {
-        const encryptedInfo = jwt.sign({userEmail:email,userPass:pass},process.env.JWT_TOKEN);
-        return encryptedInfo;
-    };
-
-    const decryptPass = (encryptStr) => {
-        jwt.verify(encryptStr,process.env.JWT_TOKEN,(err,decode)=>{
-            if(err) return 'errrrrrrror';
-            encryptStr = decode;
-        });
-        return encryptStr;
-    };
 
     try{
         const OPB = client.db(`online-payment-bills`);
@@ -50,22 +51,44 @@ async function main () {
             return reseult;
         });
 
-        app.post('/login',encryptPass,async (req,res)=>{
+        app.post('/login',async (req,res)=>{
             const {userEmail,userPass} = req.body;
-            const findUser = await userInfo.estimatedDocumentCount({userEmail: userEmail}) > 0;
+            console.log(req.body);
+            const findUser = await userInfo.countDocuments({userEmail: userEmail}) > 0;
             if(findUser) {
                 const getUserInfo = await userInfo.findOne({userEmail: userEmail});
-                const decode = decryptPass(getUserInfo.userPass);
-                if(decode === userPass) {
+                const decryptedPass = decryptPass(getUserInfo.userPass);
+
+                if(decryptedPass === userPass) {
                     const encodedUserInfo = encryptedUserInfo(userEmail,userPass);
-                    res.send({acknowledge: true,encodedUserInfo});
+                    return res.send({acknowledge: true,encodedUserInfo});
                 }
+                return res.status(401).send({acknowledge: false,message:'Wrong Password'})
+            };
+
+            return res.status(401).send({acknowledge: false,message:'Account Not Found. Please Signup'})
+        });
+
+        app.get('/checkUser',async (req,res)=>{
+            const encryptedInfo = req.headers.secretkey;
+            const decryptedInfo =decryptedUserInfo(encryptedInfo);
+            if(decryptedInfo) {
+                const encryptedPass = encryptPass(decryptedInfo.userPass);
+                const filter  = {userEmail:decryptedInfo.userEmail,userPass: encryptedPass};
+                const result = await userInfo.findOne(filter);
+                if(result) {
+                    return res.send({acknowledge: true});
+                }
+                return res.send({acknowledge: false});
             }
         });
 
-        app.post('/registration',encryptPass,async (req,res)=>{
-            const {userEmail,userFullName} = req.body;
-            const userData = {userEmail,userFullName,userPass: req.encryptPass};
+        app.post('/registration',async (req,res)=>{
+            const {userEmail,userFullName,userPass} = req.body;
+            const checkExist = await userInfo.countDocuments({userEmail: userEmail}) > 0;
+            if(checkExist) return res.status(403).send({message: 'Already have an account. Please SignIn'})
+            const encryptedPass = encryptPass(userPass);
+            const userData = {userEmail,userFullName,userPass: encryptedPass};
             const result = await userInfo.insertOne(userData);
             return res.send(result);
 
