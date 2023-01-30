@@ -49,13 +49,28 @@ async function main () {
         app.get('/billing-list',async (req,res)=>{
             const countNum = req.query.count;
             const resultLength = await billList.countDocuments({});
-            const result = await (await billList.find({}).skip(parseInt(countNum)).limit(10).toArray()).reverse();
-            return res.send({count:resultLength,data:result});
+            if(!resultLength) return res.send({count:0,data:[],totalPay:0});
+
+            const sumOfBilsPay = await billList.find({}).toArray();
+
+            const result = await billList.find({}).skip(parseInt(countNum)).limit(10).sort({billDate: -1}).toArray();
+
+            const withOutDateObj = result.map(({billDate,...rest}) => rest);
+
+            if(sumOfBilsPay && sumOfBilsPay.length === 1) {
+                return res.send({count:resultLength,data:withOutDateObj,totalPay:sumOfBilsPay[0].amount});
+            };
+
+            const totalPaid = sumOfBilsPay.reduce((a,b)=>{
+                return parseInt(a.amount) + parseInt(b.amount);
+            });
+
+            return res.send({count:resultLength,data:withOutDateObj,totalPay:totalPaid});
         });
 
         app.post('/add-billing',async (req,res)=>{
             const data = req.body;
-            const reseult = await billList.insertOne(data);
+            const reseult = await billList.insertOne({...data,billDate: new Date()});
             return res.send(reseult);
         });
 
