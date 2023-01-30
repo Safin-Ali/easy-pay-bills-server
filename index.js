@@ -30,6 +30,18 @@ const decryptPass = (encryptStr) => {
     });
     return encryptStr;
 };
+const verifyJWT = (req,res,next) => {
+    const reqHeaders = req.headers.authorization;
+
+    if(!reqHeaders) return res.status(401).send({message:'Unauthorization'});
+    const encryptEmail = reqHeaders.split(' ')[1];
+
+    jwt.verify(encryptEmail,process.env.JWT_TOKEN,(err,decode)=>{
+        if(err) return res.status(401).send({message:'Unauthorization'});
+        req.decode = decode;
+        return next()
+    });
+};
 
 // connect mongoDB
 const uri = `mongodb+srv://${process.env.mongoDBUser}:${process.env.mongoDBPass}@cluster01.rhyj5nw.mongodb.net/test`;
@@ -46,6 +58,13 @@ async function main () {
             return res.send('Welcome Online-Payment-Bills APIs')
         });
 
+        // generate JWT
+        app.get(`/JWT`,(req,res)=>{
+            const userEmail = req.headers.useremail;
+            const encryptJWTToken = jwt.sign(userEmail,process.env.JWT_TOKEN);
+            res.send({encryptJWTToken})
+        })
+
         app.get('/billing-list',async (req,res)=>{
             const countNum = req.query.count;
             const resultLength = await billList.countDocuments({});
@@ -61,7 +80,11 @@ async function main () {
                 return res.send({count:resultLength,data:withOutDateObj,totalPay:sumOfBilsPay[0].amount});
             };
 
-            return res.send({count:resultLength,data:withOutDateObj,totalPay:null});
+            const totalPaid = sumOfBilsPay.reduce((a,b)=>{
+                return parseInt(a) + parseInt(b.amount);
+            },0);
+
+            return res.send({count:resultLength,data:withOutDateObj,totalPay:totalPaid});
         });
 
         app.post('/add-billing',async (req,res)=>{
@@ -74,6 +97,8 @@ async function main () {
             const id = req.params.id;
             const data = req.body;
             const filter = {_id: ObjectId(id)};
+            const existData = await billList.findOne(filter);
+            data.billDate = existData.billDate;
             const reseult = await billList.replaceOne(filter,data);
             return res.send(reseult);
         });
@@ -87,7 +112,6 @@ async function main () {
 
         app.post('/login',async (req,res)=>{
             const {userEmail,userPass} = req.body;
-            console.log(req.body);
             const findUser = await userInfo.countDocuments({userEmail: userEmail}) > 0;
             if(findUser) {
                 const getUserInfo = await userInfo.findOne({userEmail: userEmail});
