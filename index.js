@@ -61,11 +61,7 @@ async function main () {
                 return res.send({count:resultLength,data:withOutDateObj,totalPay:sumOfBilsPay[0].amount});
             };
 
-            const totalPaid = sumOfBilsPay.reduce((a,b)=>{
-                return parseInt(a.amount) + parseInt(b.amount);
-            });
-
-            return res.send({count:resultLength,data:withOutDateObj,totalPay:totalPaid});
+            return res.send({count:resultLength,data:withOutDateObj,totalPay:null});
         });
 
         app.post('/add-billing',async (req,res)=>{
@@ -131,6 +127,16 @@ async function main () {
             return res.send(result);
 
         });
+
+        app.get(`/serachKeyword`, async (req,res)=>{
+            const key = req.query.keywords.toLowerCase();
+            const allBillsData = await billList.find({}).toArray();
+            const filtered = allBillsData.filter(matchedKey => {
+                return matchedKey.fullName.toLowerCase().includes(key) || matchedKey.email.toLowerCase().includes(key) || matchedKey.phoneNum.toLowerCase().includes(key)
+            });
+            const withOutDateObj = filtered.map(({billDate,...rest}) => rest);
+            res.send(withOutDateObj);
+        })
     }
     catch(e){
         console.log(e.message)
