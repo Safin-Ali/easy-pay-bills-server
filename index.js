@@ -3,7 +3,7 @@ const app = express();
 require('dotenv').config();
 const cors = require('cors');
 const port = process.env.PORT || 5000;
-const {MongoClient} = require('mongodb');
+const {MongoClient, ObjectId} = require('mongodb');
 const jwt = require('jsonwebtoken');
 
 // middleware
@@ -47,8 +47,31 @@ async function main () {
         });
 
         app.get('/billing-list',async (req,res)=>{
-            const reseult = await billList.find({}).toArray();
-            return reseult;
+            const countNum = req.query.count;
+            const resultLength = await billList.countDocuments({});
+            const result = await (await billList.find({}).skip(parseInt(countNum)).limit(10).toArray()).reverse();
+            return res.send({count:resultLength,data:result});
+        });
+
+        app.post('/add-billing',async (req,res)=>{
+            const data = req.body;
+            const reseult = await billList.insertOne(data);
+            return res.send(reseult);
+        });
+
+        app.patch('/update-billing/:id',async (req,res)=>{
+            const id = req.params.id;
+            const data = req.body;
+            const filter = {_id: ObjectId(id)};
+            const reseult = await billList.replaceOne(filter,data);
+            return res.send(reseult);
+        });
+
+        app.delete('/delete-billing/:id',async (req,res)=>{
+            const id = req.params.id;
+            const filter = {_id: ObjectId(id)};
+            const reseult = await billList.deleteOne(filter);
+            return res.send(reseult);
         });
 
         app.post('/login',async (req,res)=>{
